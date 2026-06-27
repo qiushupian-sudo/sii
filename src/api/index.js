@@ -37,7 +37,8 @@ async function withLocalFallback(request, fallback) {
   try {
     return await request()
   } catch (error) {
-    if (!error.response || error.response.status === 404) {
+    const fallbackStatuses = [404, 405, 501]
+    if (!error.response || fallbackStatuses.includes(error.response.status)) {
       return fallback()
     }
     throw error
@@ -57,7 +58,13 @@ export function getRecords(params) {
 
 export function createRecord(data) {
   return withLocalFallback(
-    () => api.post('/records', data),
+    async () => {
+      const res = await api.post('/records', data)
+      if (!res.data || typeof res.data !== 'object' || Array.isArray(res.data)) {
+        throw new Error('Invalid create record response')
+      }
+      return res
+    },
     () => {
       const records = localRead(STORAGE_KEYS.records, [])
       const record = {
