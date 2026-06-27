@@ -7,19 +7,35 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['icon.svg'],
       manifest: {
         name: '简单记账',
         short_name: '记账',
-        description: '简单记账应用',
+        description: '简单记账应用 - 记录收支、查看统计',
         theme_color: '#4f46e5',
         background_color: '#f5f5f5',
         display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
+        scope: '/',
+        categories: ['finance', 'productivity'],
+        lang: 'zh-CN',
         icons: [
-          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }
+          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^\/api\//,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              expiration: { maxEntries: 50, maxAgeSeconds: 300 }
+            }
+          }
+        ]
       }
     })
   ],

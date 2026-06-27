@@ -3,6 +3,15 @@ import axios from 'axios'
 const BASE_URL = import.meta.env.VITE_API_URL || '/api'
 const api = axios.create({ baseURL: BASE_URL })
 
+api.interceptors.response.use(
+  r => r,
+  err => {
+    const msg = err.response?.data?.error || err.message || '请求失败'
+    console.error('[API Error]', msg)
+    return Promise.reject(new Error(msg))
+  }
+)
+
 export function getRecords(params) {
   return api.get('/records', { params })
 }
@@ -27,6 +36,22 @@ export function updateCategories(data) {
   return api.put('/categories', data)
 }
 
+export function resetCategories() {
+  return api.put('/categories/reset')
+}
+
 export function getStats() {
   return api.get('/stats')
+}
+
+export function exportJSON() {
+  return api.get('/export/json', { responseType: 'blob' })
+}
+
+export function exportCSV() {
+  return api.get('/export/csv', { responseType: 'blob' })
+}
+
+export function importRecords(data) {
+  return api.post('/import', data)
 }
