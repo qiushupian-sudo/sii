@@ -16,26 +16,13 @@ export default defineConfig({
         background_color: '#f5f5f5',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
-        categories: ['finance', 'productivity'],
         lang: 'zh-CN',
         icons: [
           { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^\/api\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 300 }
-            }
-          }
-        ]
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
       }
     })
   ],

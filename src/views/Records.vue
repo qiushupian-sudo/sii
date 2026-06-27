@@ -3,19 +3,15 @@
     <div class="header-row">
       <h2>记账记录</h2>
       <div class="flex gap-2">
-        <button class="btn btn-outline btn-sm" @click="showExportMenu = !showExportMenu">
-          导出
-        </button>
-        <button class="btn btn-primary btn-sm" @click="openAddForm()">
-          + 新增
-        </button>
+        <button class="btn btn-outline btn-sm" @click="toggleExport">导出</button>
+        <button class="btn btn-primary btn-sm" @click="openAddForm">+ 新增</button>
       </div>
     </div>
 
     <div v-if="showExportMenu" class="export-menu">
-      <button class="btn btn-sm btn-outline" @click="doExport('json')">导出 JSON</button>
-      <button class="btn btn-sm btn-outline" @click="doExport('csv')">导出 CSV</button>
-      <button class="btn btn-sm btn-outline" @click="doImport">导入 JSON</button>
+      <button class="btn btn-sm btn-outline" @click="doExport('json')">JSON</button>
+      <button class="btn btn-sm btn-outline" @click="doExport('csv')">CSV</button>
+      <button class="btn btn-sm btn-outline" @click="triggerImport">导入JSON</button>
       <input ref="fileInput" type="file" accept=".json" style="display:none" @change="onFileImport" />
     </div>
 
@@ -28,14 +24,14 @@
         <input v-model.number="form.amount" type="number" placeholder="金额" min="0.01" step="0.01" required />
         <select v-model="form.category" required>
           <option value="" disabled>选择分类</option>
-          <option v-for="c in categories[form.type]" :key="c" :value="c">{{ c }}</option>
+          <option v-for="c in currentCats" :key="c" :value="c">{{ c }}</option>
         </select>
       </div>
       <div class="form-row">
         <input v-model="form.date" type="date" required />
-        <input v-model="form.note" placeholder="备注（选填）" maxlength="100" />
+        <input v-model="form.note" placeholder="备注" maxlength="100" />
         <button type="submit" class="btn btn-primary" :disabled="submitting">
-          {{ submitting ? '保存中…' : editingId ? '更新' : '添加' }}
+          {{ submitting ? '...' : editingId ? '更新' : '添加' }}
         </button>
         <button type="button" class="btn btn-outline" @click="cancelForm">取消</button>
       </div>
@@ -44,15 +40,15 @@
     <div class="summary">
       <div class="summary-card income">
         <span>收入</span>
-        <strong>¥{{ incomeTotal.toFixed(2) }}</strong>
+        <strong>¥{{ fmt(incomeTotal) }}</strong>
       </div>
       <div class="summary-card expense">
         <span>支出</span>
-        <strong>¥{{ expenseTotal.toFixed(2) }}</strong>
+        <strong>¥{{ fmt(expenseTotal) }}</strong>
       </div>
       <div class="summary-card balance">
         <span>结余</span>
-        <strong :style="{ color: balance >= 0 ? '#10b981' : '#ef4444' }">¥{{ balance.toFixed(2) }}</strong>
+        <strong :style="{ color: balance >= 0 ? '#10b981' : '#ef4444' }">¥{{ fmt(balance) }}</strong>
       </div>
     </div>
 
@@ -64,18 +60,16 @@
       </select>
       <select v-model="filter.category">
         <option value="">全部分类</option>
-        <option v-for="c in allCategories" :key="c" :value="c">{{ c }}</option>
+        <option v-for="c in allCatNames" :key="c" :value="c">{{ c }}</option>
       </select>
       <input v-model="filter.month" type="month" />
       <button class="btn btn-sm btn-outline" @click="resetFilters">重置</button>
     </div>
 
-    <div v-if="loading" class="loading">加载中…</div>
-
+    <div v-if="loading" class="loading">加载中...</div>
     <div v-else-if="filteredRecords.length === 0" class="empty">
-      <p>{{ allRecords.length === 0 ? '还没有记录，点击右上角「+ 新增」开始记账' : '没有匹配的记录' }}</p>
+      {{ allRecords.length === 0 ? '暂无记录，点击「+ 新增」开始记账' : '没有匹配的记录' }}
     </div>
-
     <div v-else class="table-wrap">
       <table class="table">
         <thead>
@@ -90,10 +84,10 @@
         </thead>
         <tbody>
           <tr v-for="r in filteredRecords" :key="r.id">
-            <td class="text-nowrap">{{ r.date }}</td>
-            <td><span :class="['badge', r.type === 'expense' ? 'badge-expense' : 'badge-income']">{{ r.type === 'expense' ? '支出' : '收入' }}</span></td>
+            <td>{{ r.date }}</td>
+            <td><span :class="r.type === 'expense' ? 'badge-expense' : 'badge-income'" class="badge">{{ r.type === 'expense' ? '支出' : '收入' }}</span></td>
             <td>{{ r.category }}</td>
-            <td class="text-right" :class="r.type === 'expense' ? 'text-danger' : 'text-success'">¥{{ r.amount.toFixed(2) }}</td>
+            <td class="text-right" :class="r.type === 'expense' ? 'text-danger' : 'text-success'">¥{{ fmt(r.amount) }}</td>
             <td class="text-muted">{{ r.note || '-' }}</td>
             <td>
               <button class="btn btn-xs btn-outline" @click="editRecord(r)">编辑</button>
@@ -102,27 +96,21 @@
           </tr>
         </tbody>
       </table>
-      <p class="record-count">共 {{ filteredRecords.length }} 条记录</p>
+      <p class="record-count">共 {{ filteredRecords.length }} 条</p>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getRecords, createRecord, updateRecord, deleteRecord, getCategories, exportJSON, exportCSV, importRecords } from '../api'
+import {
+  getRecords, createRecord, updateRecord, deleteRecord,
+  getCategories, exportJSON, exportCSV, importRecords
+} from '../api'
 
-const records = ref([])
-const allCategories = ref([])
-const categories = ref({ expense: [], income: [] })
-const showForm = ref(false)
-const editingId = ref(null)
-const submitting = ref(false)
-const loading = ref(true)
-const showExportMenu = ref(false)
-const fileInput = ref(null)
-
-const filter = ref({ type: '', category: '', month: '' })
-const form = ref({ type: 'expense', amount: null, category: '', date: today(), note: '' })
+function fmt(n) {
+  return (typeof n === 'number' && isFinite(n) ? n : 0).toFixed(2)
+}
 
 function today() {
   const d = new Date()
@@ -134,63 +122,93 @@ function currentMonth() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
 }
 
-function resetForm() {
-  form.value = { type: 'expense', amount: null, category: '', date: today(), note: '' }
-  editingId.value = null
-}
+const allRecords = ref([])
+const cats = ref({ expense: [], income: [] })
+const showForm = ref(false)
+const editingId = ref(null)
+const submitting = ref(false)
+const loading = ref(true)
+const showExportMenu = ref(false)
+const fileInput = ref(null)
+const filter = ref({ type: '', category: '', month: '' })
+const form = ref({ type: 'expense', amount: null, category: '', date: today(), note: '' })
 
-const filteredRecords = computed(() => {
-  return records.value.filter(r => {
-    if (filter.value.type && r.type !== filter.value.type) return false
-    if (filter.value.category && r.category !== filter.value.category) return false
-    if (filter.value.month && r.date.slice(0, 7) !== filter.value.month) return false
-    return true
-  }).sort((a, b) => b.id - a.id)
+const currentCats = computed(() => {
+  const t = form.value.type
+  const c = cats.value
+  return (c && c[t]) ? c[t] : []
 })
 
-const incomeTotal = computed(() => records.value.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0))
-const expenseTotal = computed(() => records.value.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0))
+const allCatNames = computed(() => {
+  const c = cats.value
+  const e = (c && c.expense) ? c.expense : []
+  const i = (c && c.income) ? c.income : []
+  return [...e, ...i]
+})
+
+const filteredRecords = computed(() => {
+  const list = Array.isArray(allRecords.value) ? allRecords.value : []
+  return list.filter(r => {
+    if (filter.value.type && r.type !== filter.value.type) return false
+    if (filter.value.category && r.category !== filter.value.category) return false
+    if (filter.value.month && r.date && r.date.slice(0, 7) !== filter.value.month) return false
+    return true
+  }).sort((a, b) => (b.id || 0) - (a.id || 0))
+})
+
+const incomeTotal = computed(() =>
+  filteredRecords.value.filter(r => r.type === 'income').reduce((s, r) => s + (r.amount || 0), 0)
+)
+const expenseTotal = computed(() =>
+  filteredRecords.value.filter(r => r.type === 'expense').reduce((s, r) => s + (r.amount || 0), 0)
+)
 const balance = computed(() => incomeTotal.value - expenseTotal.value)
 
 async function fetchData() {
   loading.value = true
   try {
     const [recRes, catRes] = await Promise.all([getRecords(), getCategories()])
-    records.value = recRes.data
-    categories.value = catRes.data
-    allCategories.value = [...catRes.data.expense, ...catRes.data.income]
+    allRecords.value = Array.isArray(recRes.data) ? recRes.data : []
+    if (catRes.data && catRes.data.expense && catRes.data.income) {
+      cats.value = catRes.data
+    }
     if (!filter.value.month) filter.value.month = currentMonth()
   } catch (e) {
-    alert('加载数据失败：' + (e.response?.data?.error || e.message))
+    console.error('fetchData error:', e)
   }
   loading.value = false
 }
 
 function openAddForm() {
-  resetForm()
+  form.value = { type: 'expense', amount: null, category: '', date: today(), note: '' }
+  editingId.value = null
   showForm.value = true
   showExportMenu.value = false
 }
 
 function cancelForm() {
   showForm.value = false
-  resetForm()
+  editingId.value = null
 }
 
 function resetFilters() {
   filter.value = { type: '', category: '', month: currentMonth() }
 }
 
+function toggleExport() {
+  showExportMenu.value = !showExportMenu.value
+  showForm.value = false
+}
+
 async function handleSubmit() {
   if (!form.value.amount || form.value.amount <= 0) {
-    alert('请输入金额（大于0）')
+    alert('请输入金额')
     return
   }
   if (!form.value.category) {
     alert('请选择分类')
     return
   }
-
   submitting.value = true
   try {
     const data = {
@@ -208,25 +226,27 @@ async function handleSubmit() {
     cancelForm()
     await fetchData()
   } catch (e) {
-    alert('操作失败：' + (e.response?.data?.error || e.message))
+    console.error('submit error:', e)
+    alert('操作失败')
   }
   submitting.value = false
 }
 
 function editRecord(r) {
-  form.value = { type: r.type, amount: r.amount, category: r.category, date: r.date, note: r.note }
+  form.value = { type: r.type, amount: r.amount, category: r.category, date: r.date, note: r.note || '' }
   editingId.value = r.id
   showForm.value = true
   showExportMenu.value = false
 }
 
 async function removeRecord(r) {
-  if (!confirm('确定删除这条记录？')) return
+  if (!confirm('确定删除？')) return
   try {
     await deleteRecord(r.id)
     await fetchData()
   } catch (e) {
-    alert('删除失败：' + (e.response?.data?.error || e.message))
+    console.error('delete error:', e)
+    alert('删除失败')
   }
 }
 
@@ -234,7 +254,8 @@ async function doExport(format) {
   showExportMenu.value = false
   try {
     const res = format === 'json' ? await exportJSON() : await exportCSV()
-    const url = URL.createObjectURL(res.data)
+    const blob = res.data
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = 'records.' + format
@@ -243,26 +264,29 @@ async function doExport(format) {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   } catch (e) {
-    alert('导出失败：' + (e.response?.data?.error || e.message))
+    console.error('export error:', e)
+    alert('导出失败')
   }
 }
 
-function doImport() {
+function triggerImport() {
   showExportMenu.value = false
-  fileInput.value?.click()
+  if (fileInput.value) fileInput.value.click()
 }
 
 async function onFileImport(e) {
-  const file = e.target.files?.[0]
+  const file = e.target.files && e.target.files[0]
   if (!file) return
   try {
     const text = await file.text()
     const data = JSON.parse(text)
+    if (!Array.isArray(data)) throw new Error('格式错误')
     await importRecords(data)
     await fetchData()
-    alert('导入成功，共 ' + data.length + ' 条记录')
+    alert('导入成功，共 ' + data.length + ' 条')
   } catch (e) {
-    alert('导入失败：' + e.message)
+    console.error('import error:', e)
+    alert('导入失败')
   }
   e.target.value = ''
 }
@@ -288,7 +312,7 @@ onMounted(fetchData)
 .filters select, .filters input { flex: 1; min-width: 100px; }
 .table-wrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.table th, .table td { padding: 10px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
+.table th, .table td { padding: 10px; text-align: left; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
 .table th { background: #fafafa; font-weight: 600; color: #888; font-size: 12px; }
 .table tbody tr:hover { background: #fafafa; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
@@ -298,6 +322,5 @@ onMounted(fetchData)
 .text-danger { color: #ef4444; font-weight: 600; }
 .text-success { color: #10b981; font-weight: 600; }
 .text-muted { color: #999; }
-.text-nowrap { white-space: nowrap; }
 .record-count { text-align: center; font-size: 12px; color: #bbb; margin-top: 12px; }
 </style>

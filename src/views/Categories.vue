@@ -2,45 +2,45 @@
   <div>
     <div class="header-row">
       <h2>分类管理</h2>
-      <button class="btn btn-sm btn-outline" @click="resetToDefault">
-        恢复默认
-      </button>
+      <button class="btn btn-sm btn-outline" @click="restoreDefaults">恢复默认</button>
     </div>
 
-    <div v-if="loading" class="loading">加载中…</div>
+    <div v-if="loading" class="loading">加载中...</div>
 
     <template v-else>
       <div class="category-group">
         <div class="group-header">
           <h3>支出分类</h3>
-          <span class="count">{{ cats.expense.length }} 项</span>
+          <span class="count">{{ (expenseList || []).length }} 项</span>
         </div>
         <div class="tag-list">
-          <span v-for="(c, i) in cats.expense" :key="i" class="tag tag-expense">
-            <span>{{ c }}</span>
-            <button class="tag-remove" @click="remove('expense', i)">&times;</button>
+          <span v-for="(c, i) in expenseList" :key="i" class="tag tag-expense">
+            {{ c }}
+            <button class="tag-remove" @click="removeCat('expense', i)">&times;</button>
           </span>
+          <span v-if="!expenseList.length" class="empty-hint">暂无分类</span>
         </div>
         <div class="add-row">
-          <input v-model="newExpense" placeholder="新增支出分类" maxlength="10" @keyup.enter="add('expense')" />
-          <button class="btn btn-primary btn-sm" @click="add('expense')" :disabled="!newExpense.trim()">添加</button>
+          <input v-model="newExpense" placeholder="新增支出分类" maxlength="10" @keyup.enter="addCat('expense')" />
+          <button class="btn btn-primary btn-sm" @click="addCat('expense')">添加</button>
         </div>
       </div>
 
       <div class="category-group">
         <div class="group-header">
           <h3>收入分类</h3>
-          <span class="count">{{ cats.income.length }} 项</span>
+          <span class="count">{{ (incomeList || []).length }} 项</span>
         </div>
         <div class="tag-list">
-          <span v-for="(c, i) in cats.income" :key="i" class="tag tag-income">
-            <span>{{ c }}</span>
-            <button class="tag-remove" @click="remove('income', i)">&times;</button>
+          <span v-for="(c, i) in incomeList" :key="i" class="tag tag-income">
+            {{ c }}
+            <button class="tag-remove" @click="removeCat('income', i)">&times;</button>
           </span>
+          <span v-if="!incomeList.length" class="empty-hint">暂无分类</span>
         </div>
         <div class="add-row">
-          <input v-model="newIncome" placeholder="新增收入分类" maxlength="10" @keyup.enter="add('income')" />
-          <button class="btn btn-primary btn-sm" @click="add('income')" :disabled="!newIncome.trim()">添加</button>
+          <input v-model="newIncome" placeholder="新增收入分类" maxlength="10" @keyup.enter="addCat('income')" />
+          <button class="btn btn-primary btn-sm" @click="addCat('income')">添加</button>
         </div>
       </div>
     </template>
@@ -48,72 +48,77 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getCategories, updateCategories, resetCategories } from '../api'
 
-const cats = reactive({ expense: [], income: [] })
+const rawData = ref({ expense: [], income: [] })
 const newExpense = ref('')
 const newIncome = ref('')
 const loading = ref(true)
 
-async function fetch() {
+const expenseList = computed(() => (rawData.value && rawData.value.expense) ? rawData.value.expense : [])
+const incomeList = computed(() => (rawData.value && rawData.value.income) ? rawData.value.income : [])
+
+async function loadData() {
   loading.value = true
   try {
     const res = await getCategories()
-    cats.expense = res.data.expense
-    cats.income = res.data.income
+    if (res.data && Array.isArray(res.data.expense) && Array.isArray(res.data.income)) {
+      rawData.value = { expense: res.data.expense, income: res.data.income }
+    }
   } catch (e) {
-    alert('加载分类失败：' + (e.response?.data?.error || e.message))
+    console.error('load categories error:', e)
   }
   loading.value = false
 }
 
-async function save() {
+async function saveData() {
   try {
-    await updateCategories({ expense: cats.expense, income: cats.income })
+    await updateCategories({ expense: expenseList.value, income: incomeList.value })
   } catch (e) {
-    alert('保存失败：' + (e.response?.data?.error || e.message))
+    console.error('save categories error:', e)
   }
 }
 
-function add(type) {
-  const val = (type === 'expense' ? newExpense : newIncome).value.trim()
+function addCat(type) {
+  const input = type === 'expense' ? newExpense : newIncome
+  const val = input.value.trim()
   if (!val) return
-  const list = type === 'expense' ? cats.expense : cats.income
+  const list = type === 'expense' ? rawData.value.expense : rawData.value.income
+  if (!Array.isArray(list)) return
   if (list.includes(val)) {
     alert('分类已存在')
     return
   }
   list.push(val)
-  if (type === 'expense') newExpense.value = ''
-  else newIncome.value = ''
-  save()
+  input.value = ''
+  saveData()
 }
 
-function remove(type, index) {
-  const list = type === 'expense' ? cats.expense : cats.income
-  if (list.length <= 1) {
+function removeCat(type, index) {
+  const list = type === 'expense' ? rawData.value.expense : rawData.value.income
+  if (!Array.isArray(list) || list.length <= 1) {
     alert('至少保留一个分类')
     return
   }
   if (!confirm('确定删除「' + list[index] + '」？')) return
   list.splice(index, 1)
-  save()
+  saveData()
 }
 
-async function resetToDefault() {
-  if (!confirm('确定恢复默认分类？自定义分类将被覆盖')) return
+async function restoreDefaults() {
+  if (!confirm('确定恢复默认分类？')) return
   try {
     const res = await resetCategories()
-    cats.expense = res.data.expense
-    cats.income = res.data.income
-    alert('已恢复默认分类')
+    if (res.data && Array.isArray(res.data.expense) && Array.isArray(res.data.income)) {
+      rawData.value = { expense: res.data.expense, income: res.data.income }
+    }
   } catch (e) {
-    alert('恢复失败：' + (e.response?.data?.error || e.message))
+    console.error('reset categories error:', e)
   }
 }
 
-onMounted(fetch)
+onMounted(loadData)
 </script>
 
 <style scoped>
@@ -129,6 +134,7 @@ onMounted(fetch)
 .tag-income { background: #ecfdf5; color: #10b981; }
 .tag-remove { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; opacity: .4; padding: 0 2px; color: inherit; }
 .tag-remove:hover { opacity: 1; }
+.empty-hint { color: #ccc; font-size: 13px; }
 .add-row { display: flex; gap: 8px; }
 .add-row input { flex: 1; max-width: 200px; }
 </style>
