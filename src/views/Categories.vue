@@ -13,36 +13,34 @@
       <div class="category-group">
         <div class="group-header">
           <h3>支出分类</h3>
-          <span class="count">{{ categories.expense.length }} 项</span>
+          <span class="count">{{ cats.expense.length }} 项</span>
         </div>
         <div class="tag-list">
-          <span v-for="(c, i) in categories.expense" :key="i" class="tag tag-expense">
+          <span v-for="(c, i) in cats.expense" :key="i" class="tag tag-expense">
             <span>{{ c }}</span>
-            <button class="tag-remove" @click="removeCategory('expense', i)" :disabled="categories.expense.length <= 1">&times;</button>
+            <button class="tag-remove" @click="remove('expense', i)">&times;</button>
           </span>
-          <span v-if="categories.expense.length === 0" class="empty-tag">暂无分类</span>
         </div>
         <div class="add-row">
-          <input v-model="newExpenseCat" placeholder="新增支出分类" maxlength="10" @keyup.enter="addCategory('expense')" />
-          <button class="btn btn-primary btn-sm" @click="addCategory('expense')" :disabled="!newExpenseCat.trim()">添加</button>
+          <input v-model="newExpense" placeholder="新增支出分类" maxlength="10" @keyup.enter="add('expense')" />
+          <button class="btn btn-primary btn-sm" @click="add('expense')" :disabled="!newExpense.trim()">添加</button>
         </div>
       </div>
 
       <div class="category-group">
         <div class="group-header">
           <h3>收入分类</h3>
-          <span class="count">{{ categories.income.length }} 项</span>
+          <span class="count">{{ cats.income.length }} 项</span>
         </div>
         <div class="tag-list">
-          <span v-for="(c, i) in categories.income" :key="i" class="tag tag-income">
+          <span v-for="(c, i) in cats.income" :key="i" class="tag tag-income">
             <span>{{ c }}</span>
-            <button class="tag-remove" @click="removeCategory('income', i)" :disabled="categories.income.length <= 1">&times;</button>
+            <button class="tag-remove" @click="remove('income', i)">&times;</button>
           </span>
-          <span v-if="categories.income.length === 0" class="empty-tag">暂无分类</span>
         </div>
         <div class="add-row">
-          <input v-model="newIncomeCat" placeholder="新增收入分类" maxlength="10" @keyup.enter="addCategory('income')" />
-          <button class="btn btn-primary btn-sm" @click="addCategory('income')" :disabled="!newIncomeCat.trim()">添加</button>
+          <input v-model="newIncome" placeholder="新增收入分类" maxlength="10" @keyup.enter="add('income')" />
+          <button class="btn btn-primary btn-sm" @click="add('income')" :disabled="!newIncome.trim()">添加</button>
         </div>
       </div>
     </template>
@@ -50,56 +48,56 @@
 </template>
 
 <script setup>
-import { ref, onMounted, inject } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { getCategories, updateCategories, resetCategories } from '../api'
 
-const showToast = inject('showToast')
-
-const categories = ref({ expense: [], income: [] })
-const newExpenseCat = ref('')
-const newIncomeCat = ref('')
+const cats = reactive({ expense: [], income: [] })
+const newExpense = ref('')
+const newIncome = ref('')
 const loading = ref(true)
 
-async function fetchCategories() {
+async function fetch() {
+  loading.value = true
   try {
-    loading.value = true
     const res = await getCategories()
-    categories.value = res.data
+    cats.expense = res.data.expense
+    cats.income = res.data.income
   } catch (e) {
-    showToast(e.message, 'error')
-  } finally {
-    loading.value = false
+    alert('加载分类失败：' + (e.response?.data?.error || e.message))
   }
+  loading.value = false
 }
 
 async function save() {
   try {
-    await updateCategories(categories.value)
+    await updateCategories({ expense: cats.expense, income: cats.income })
   } catch (e) {
-    showToast(e.message, 'error')
+    alert('保存失败：' + (e.response?.data?.error || e.message))
   }
 }
 
-function addCategory(type) {
-  const val = type === 'expense' ? newExpenseCat.value.trim() : newIncomeCat.value.trim()
+function add(type) {
+  const val = (type === 'expense' ? newExpense : newIncome).value.trim()
   if (!val) return
-  if (categories.value[type].includes(val)) {
-    showToast('分类已存在', 'error')
+  const list = type === 'expense' ? cats.expense : cats.income
+  if (list.includes(val)) {
+    alert('分类已存在')
     return
   }
-  categories.value[type].push(val)
-  if (type === 'expense') newExpenseCat.value = ''
-  else newIncomeCat.value = ''
+  list.push(val)
+  if (type === 'expense') newExpense.value = ''
+  else newIncome.value = ''
   save()
 }
 
-function removeCategory(type, index) {
-  if (categories.value[type].length <= 1) {
-    showToast('至少保留一个分类', 'error')
+function remove(type, index) {
+  const list = type === 'expense' ? cats.expense : cats.income
+  if (list.length <= 1) {
+    alert('至少保留一个分类')
     return
   }
-  if (!confirm(`确定删除「${categories.value[type][index]}」？`)) return
-  categories.value[type].splice(index, 1)
+  if (!confirm('确定删除「' + list[index] + '」？')) return
+  list.splice(index, 1)
   save()
 }
 
@@ -107,14 +105,15 @@ async function resetToDefault() {
   if (!confirm('确定恢复默认分类？自定义分类将被覆盖')) return
   try {
     const res = await resetCategories()
-    categories.value = res.data
-    showToast('已恢复默认分类', 'success')
+    cats.expense = res.data.expense
+    cats.income = res.data.income
+    alert('已恢复默认分类')
   } catch (e) {
-    showToast(e.message, 'error')
+    alert('恢复失败：' + (e.response?.data?.error || e.message))
   }
 }
 
-onMounted(fetchCategories)
+onMounted(fetch)
 </script>
 
 <style scoped>
@@ -130,8 +129,6 @@ onMounted(fetchCategories)
 .tag-income { background: #ecfdf5; color: #10b981; }
 .tag-remove { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; opacity: .4; padding: 0 2px; color: inherit; }
 .tag-remove:hover { opacity: 1; }
-.tag-remove:disabled { opacity: .15; cursor: not-allowed; }
-.empty-tag { color: #ccc; font-size: 13px; padding: 4px 0; }
 .add-row { display: flex; gap: 8px; }
 .add-row input { flex: 1; max-width: 200px; }
 </style>

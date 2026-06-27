@@ -11,31 +11,8 @@
     <main class="main">
       <router-view />
     </main>
-
-    <Teleport to="body">
-      <div v-if="toast.show" :class="['toast', `toast-${toast.type}`]">
-        <span>{{ toast.message }}</span>
-      </div>
-    </Teleport>
   </div>
 </template>
-
-<script setup>
-import { provide, reactive } from 'vue'
-
-const toast = reactive({ show: false, message: '', type: 'info' })
-let toastTimer = null
-
-function showToast(message, type = 'info', duration = 2500) {
-  clearTimeout(toastTimer)
-  toast.show = true
-  toast.message = message
-  toast.type = type
-  toastTimer = setTimeout(() => { toast.show = false }, duration)
-}
-
-provide('showToast', showToast)
-</script>
 
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -62,21 +39,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-xs { padding: 2px 8px; font-size: 11px; border-radius: 6px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn:disabled:active { transform: none; }
-input, select, textarea { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; transition: border .2s, box-shadow .2s; }
+input, select, textarea { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; transition: border .2s, box-shadow .2s; font-family: inherit; }
 input:focus, select:focus, textarea:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.1); }
-.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 10px 24px; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,.15); animation: toastIn .25s ease; }
-.toast-info { background: #1f2937; color: #fff; }
-.toast-success { background: #059669; color: #fff; }
-.toast-error { background: #dc2626; color: #fff; }
-@keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 .loading { text-align: center; padding: 40px 0; color: #999; font-size: 14px; }
 .empty { text-align: center; padding: 40px 0; color: #999; font-size: 14px; }
 .text-right { text-align: right; }
-.ml-auto { margin-left: auto; }
+.text-center { text-align: center; }
 .flex { display: flex; }
-.flex-wrap { flex-wrap: wrap; }
 .gap-2 { gap: 8px; }
-.gap-3 { gap: 12px; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 </style>

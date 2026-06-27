@@ -6,17 +6,17 @@
         <button class="btn btn-outline btn-sm" @click="showExportMenu = !showExportMenu">
           导出
         </button>
-        <button class="btn btn-primary btn-sm" @click="openForm()">
+        <button class="btn btn-primary btn-sm" @click="openAddForm()">
           + 新增
         </button>
       </div>
     </div>
 
     <div v-if="showExportMenu" class="export-menu">
-      <button class="btn btn-sm btn-outline" @click="handleExport('json')">导出 JSON</button>
-      <button class="btn btn-sm btn-outline" @click="handleExport('csv')">导出 CSV</button>
-      <button class="btn btn-sm btn-outline" @click="handleImport">导入 JSON</button>
-      <input ref="fileInput" type="file" accept=".json" style="display:none" @change="handleFileImport" />
+      <button class="btn btn-sm btn-outline" @click="doExport('json')">导出 JSON</button>
+      <button class="btn btn-sm btn-outline" @click="doExport('csv')">导出 CSV</button>
+      <button class="btn btn-sm btn-outline" @click="doImport">导入 JSON</button>
+      <input ref="fileInput" type="file" accept=".json" style="display:none" @change="onFileImport" />
     </div>
 
     <form v-if="showForm" class="form" @submit.prevent="handleSubmit">
@@ -37,7 +37,7 @@
         <button type="submit" class="btn btn-primary" :disabled="submitting">
           {{ submitting ? '保存中…' : editingId ? '更新' : '添加' }}
         </button>
-        <button type="button" class="btn btn-outline" @click="closeForm">取消</button>
+        <button type="button" class="btn btn-outline" @click="cancelForm">取消</button>
       </div>
     </form>
 
@@ -73,7 +73,7 @@
     <div v-if="loading" class="loading">加载中…</div>
 
     <div v-else-if="filteredRecords.length === 0" class="empty">
-      <p>{{ records.length === 0 ? '还没有记账记录，点击右上角「+ 新增」开始记账' : '没有匹配的记录' }}</p>
+      <p>{{ allRecords.length === 0 ? '还没有记录，点击右上角「+ 新增」开始记账' : '没有匹配的记录' }}</p>
     </div>
 
     <div v-else class="table-wrap">
@@ -108,12 +108,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getRecords, createRecord, updateRecord, deleteRecord, getCategories, exportJSON, exportCSV, importRecords } from '../api'
 
-const showToast = inject('showToast')
-
 const records = ref([])
+const allCategories = ref([])
 const categories = ref({ expense: [], income: [] })
 const showForm = ref(false)
 const editingId = ref(null)
@@ -122,19 +121,23 @@ const loading = ref(true)
 const showExportMenu = ref(false)
 const fileInput = ref(null)
 
-const filter = ref({ type: '', category: '', month: getCurrentMonth() })
-const form = ref(emptyForm())
+const filter = ref({ type: '', category: '', month: '' })
+const form = ref({ type: 'expense', amount: null, category: '', date: today(), note: '' })
 
-function getCurrentMonth() {
+function today() {
   const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 }
 
-function emptyForm() {
-  return { type: 'expense', amount: null, category: '', date: new Date().toISOString().slice(0, 10), note: '' }
+function currentMonth() {
+  const d = new Date()
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
 }
 
-const allCategories = computed(() => [...categories.value.expense, ...categories.value.income])
+function resetForm() {
+  form.value = { type: 'expense', amount: null, category: '', date: today(), note: '' }
+  editingId.value = null
+}
 
 const filteredRecords = computed(() => {
   return records.value.filter(r => {
@@ -150,127 +153,116 @@ const expenseTotal = computed(() => records.value.filter(r => r.type === 'expens
 const balance = computed(() => incomeTotal.value - expenseTotal.value)
 
 async function fetchData() {
+  loading.value = true
   try {
-    loading.value = true
     const [recRes, catRes] = await Promise.all([getRecords(), getCategories()])
     records.value = recRes.data
     categories.value = catRes.data
+    allCategories.value = [...catRes.data.expense, ...catRes.data.income]
+    if (!filter.value.month) filter.value.month = currentMonth()
   } catch (e) {
-    showToast(e.message, 'error')
-  } finally {
-    loading.value = false
+    alert('加载数据失败：' + (e.response?.data?.error || e.message))
   }
+  loading.value = false
 }
 
-function openForm(record) {
-  if (record) {
-    form.value = { type: record.type, amount: record.amount, category: record.category, date: record.date, note: record.note }
-    editingId.value = record.id
-  } else {
-    form.value = emptyForm()
-    editingId.value = null
-  }
+function openAddForm() {
+  resetForm()
   showForm.value = true
   showExportMenu.value = false
 }
 
-function closeForm() {
+function cancelForm() {
   showForm.value = false
-  editingId.value = null
-  form.value = emptyForm()
+  resetForm()
 }
 
 function resetFilters() {
-  filter.value = { type: '', category: '', month: getCurrentMonth() }
+  filter.value = { type: '', category: '', month: currentMonth() }
 }
 
 async function handleSubmit() {
   if (!form.value.amount || form.value.amount <= 0) {
-    showToast('金额必须大于0', 'error')
+    alert('请输入金额（大于0）')
     return
   }
   if (!form.value.category) {
-    showToast('请选择分类', 'error')
+    alert('请选择分类')
     return
   }
 
   submitting.value = true
   try {
-    const data = { ...form.value, amount: parseFloat(form.value.amount) }
+    const data = {
+      type: form.value.type,
+      amount: parseFloat(form.value.amount),
+      category: form.value.category,
+      date: form.value.date,
+      note: form.value.note || ''
+    }
     if (editingId.value) {
       await updateRecord(editingId.value, data)
-      showToast('更新成功', 'success')
     } else {
       await createRecord(data)
-      showToast('添加成功', 'success')
     }
-    closeForm()
+    cancelForm()
     await fetchData()
   } catch (e) {
-    showToast(e.message, 'error')
-  } finally {
-    submitting.value = false
+    alert('操作失败：' + (e.response?.data?.error || e.message))
   }
+  submitting.value = false
 }
 
 function editRecord(r) {
-  openForm(r)
+  form.value = { type: r.type, amount: r.amount, category: r.category, date: r.date, note: r.note }
+  editingId.value = r.id
+  showForm.value = true
+  showExportMenu.value = false
 }
 
 async function removeRecord(r) {
-  if (!confirm(`确定删除这条 ${r.type === 'expense' ? '支出' : '收入'} 记录？`)) return
+  if (!confirm('确定删除这条记录？')) return
   try {
     await deleteRecord(r.id)
-    showToast('已删除', 'success')
     await fetchData()
   } catch (e) {
-    showToast(e.message, 'error')
+    alert('删除失败：' + (e.response?.data?.error || e.message))
   }
 }
 
-async function handleExport(format) {
+async function doExport(format) {
+  showExportMenu.value = false
   try {
-    if (format === 'json') {
-      const res = await exportJSON()
-      downloadBlob(res.data, 'records.json')
-    } else {
-      const res = await exportCSV()
-      downloadBlob(res.data, 'records.csv')
-    }
-    showToast(`导出成功`, 'success')
+    const res = format === 'json' ? await exportJSON() : await exportCSV()
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'records.' + format
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   } catch (e) {
-    showToast(e.message, 'error')
+    alert('导出失败：' + (e.response?.data?.error || e.message))
   }
+}
+
+function doImport() {
   showExportMenu.value = false
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
-
-function handleImport() {
   fileInput.value?.click()
-  showExportMenu.value = false
 }
 
-async function handleFileImport(e) {
+async function onFileImport(e) {
   const file = e.target.files?.[0]
   if (!file) return
   try {
     const text = await file.text()
     const data = JSON.parse(text)
     await importRecords(data)
-    showToast(`导入 ${data.length} 条记录成功`, 'success')
     await fetchData()
+    alert('导入成功，共 ' + data.length + ' 条记录')
   } catch (e) {
-    showToast('导入失败：' + e.message, 'error')
+    alert('导入失败：' + e.message)
   }
   e.target.value = ''
 }
@@ -297,7 +289,7 @@ onMounted(fetchData)
 .table-wrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table th, .table td { padding: 10px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
-.table th { background: #fafafa; font-weight: 600; color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+.table th { background: #fafafa; font-weight: 600; color: #888; font-size: 12px; }
 .table tbody tr:hover { background: #fafafa; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
 .badge-expense { background: #fef2f2; color: #ef4444; }
