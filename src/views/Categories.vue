@@ -11,14 +11,14 @@
       <div class="category-group">
         <div class="group-header">
           <h3>支出分类</h3>
-          <span class="count">{{ (expenseList || []).length }} 项</span>
+          <span class="count">{{ expenseArr.length }} 项</span>
         </div>
         <div class="tag-list">
-          <span v-for="(c, i) in expenseList" :key="i" class="tag tag-expense">
+          <span v-for="(c, i) in expenseArr" :key="i" class="tag tag-expense">
             {{ c }}
             <button class="tag-remove" @click="removeCat('expense', i)">&times;</button>
           </span>
-          <span v-if="!expenseList.length" class="empty-hint">暂无分类</span>
+          <span v-if="expenseArr.length === 0" class="empty-hint">暂无分类</span>
         </div>
         <div class="add-row">
           <input v-model="newExpense" placeholder="新增支出分类" maxlength="10" @keyup.enter="addCat('expense')" />
@@ -29,14 +29,14 @@
       <div class="category-group">
         <div class="group-header">
           <h3>收入分类</h3>
-          <span class="count">{{ (incomeList || []).length }} 项</span>
+          <span class="count">{{ incomeArr.length }} 项</span>
         </div>
         <div class="tag-list">
-          <span v-for="(c, i) in incomeList" :key="i" class="tag tag-income">
+          <span v-for="(c, i) in incomeArr" :key="i" class="tag tag-income">
             {{ c }}
             <button class="tag-remove" @click="removeCat('income', i)">&times;</button>
           </span>
-          <span v-if="!incomeList.length" class="empty-hint">暂无分类</span>
+          <span v-if="incomeArr.length === 0" class="empty-hint">暂无分类</span>
         </div>
         <div class="add-row">
           <input v-model="newIncome" placeholder="新增收入分类" maxlength="10" @keyup.enter="addCat('income')" />
@@ -48,23 +48,23 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { getCategories, updateCategories, resetCategories } from '../api'
 
-const rawData = ref({ expense: [], income: [] })
+const expenseArr = ref([])
+const incomeArr = ref([])
 const newExpense = ref('')
 const newIncome = ref('')
 const loading = ref(true)
-
-const expenseList = computed(() => (rawData.value && rawData.value.expense) ? rawData.value.expense : [])
-const incomeList = computed(() => (rawData.value && rawData.value.income) ? rawData.value.income : [])
 
 async function loadData() {
   loading.value = true
   try {
     const res = await getCategories()
-    if (res.data && Array.isArray(res.data.expense) && Array.isArray(res.data.income)) {
-      rawData.value = { expense: res.data.expense, income: res.data.income }
+    const d = res.data
+    if (d && Array.isArray(d.expense) && Array.isArray(d.income)) {
+      expenseArr.value = d.expense.slice()
+      incomeArr.value = d.income.slice()
     }
   } catch (e) {
     console.error('load categories error:', e)
@@ -72,9 +72,19 @@ async function loadData() {
   loading.value = false
 }
 
-async function saveData() {
+async function saveAndReload() {
   try {
-    await updateCategories({ expense: expenseList.value, income: incomeList.value })
+    const payload = {
+      expense: expenseArr.value.slice(),
+      income: incomeArr.value.slice()
+    }
+    await updateCategories(payload)
+    const res = await getCategories()
+    const d = res.data
+    if (d && Array.isArray(d.expense) && Array.isArray(d.income)) {
+      expenseArr.value = d.expense.slice()
+      incomeArr.value = d.income.slice()
+    }
   } catch (e) {
     console.error('save categories error:', e)
   }
@@ -84,34 +94,35 @@ function addCat(type) {
   const input = type === 'expense' ? newExpense : newIncome
   const val = input.value.trim()
   if (!val) return
-  const list = type === 'expense' ? rawData.value.expense : rawData.value.income
-  if (!Array.isArray(list)) return
-  if (list.includes(val)) {
+  const list = type === 'expense' ? expenseArr : incomeArr
+  if (list.value.includes(val)) {
     alert('分类已存在')
     return
   }
-  list.push(val)
+  list.value.push(val)
   input.value = ''
-  saveData()
+  saveAndReload()
 }
 
 function removeCat(type, index) {
-  const list = type === 'expense' ? rawData.value.expense : rawData.value.income
-  if (!Array.isArray(list) || list.length <= 1) {
+  const list = type === 'expense' ? expenseArr : incomeArr
+  if (list.value.length <= 1) {
     alert('至少保留一个分类')
     return
   }
-  if (!confirm('确定删除「' + list[index] + '」？')) return
-  list.splice(index, 1)
-  saveData()
+  if (!confirm('确定删除「' + list.value[index] + '」？')) return
+  list.value.splice(index, 1)
+  saveAndReload()
 }
 
 async function restoreDefaults() {
   if (!confirm('确定恢复默认分类？')) return
   try {
     const res = await resetCategories()
-    if (res.data && Array.isArray(res.data.expense) && Array.isArray(res.data.income)) {
-      rawData.value = { expense: res.data.expense, income: res.data.income }
+    const d = res.data
+    if (d && Array.isArray(d.expense) && Array.isArray(d.income)) {
+      expenseArr.value = d.expense.slice()
+      incomeArr.value = d.income.slice()
     }
   } catch (e) {
     console.error('reset categories error:', e)

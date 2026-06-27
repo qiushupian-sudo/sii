@@ -17,14 +17,14 @@
 
     <form v-if="showForm" class="form" @submit.prevent="handleSubmit">
       <div class="form-row">
-        <select v-model="form.type">
+        <select v-model="form.type" @change="onTypeChange">
           <option value="expense">支出</option>
           <option value="income">收入</option>
         </select>
         <input v-model.number="form.amount" type="number" placeholder="金额" min="0.01" step="0.01" required />
         <select v-model="form.category" required>
           <option value="" disabled>选择分类</option>
-          <option v-for="c in currentCats" :key="c" :value="c">{{ c }}</option>
+          <option v-for="c in formCats" :key="c" :value="c">{{ c }}</option>
         </select>
       </div>
       <div class="form-row">
@@ -60,7 +60,7 @@
       </select>
       <select v-model="filter.category">
         <option value="">全部分类</option>
-        <option v-for="c in allCatNames" :key="c" :value="c">{{ c }}</option>
+        <option v-for="c in filterCats" :key="c" :value="c">{{ c }}</option>
       </select>
       <input v-model="filter.month" type="month" />
       <button class="btn btn-sm btn-outline" @click="resetFilters">重置</button>
@@ -102,7 +102,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import {
   getRecords, createRecord, updateRecord, deleteRecord,
   getCategories, exportJSON, exportCSV, importRecords
@@ -123,7 +123,8 @@ function currentMonth() {
 }
 
 const allRecords = ref([])
-const cats = ref({ expense: [], income: [] })
+const expenseCats = ref([])
+const incomeCats = ref([])
 const showForm = ref(false)
 const editingId = ref(null)
 const submitting = ref(false)
@@ -133,20 +134,24 @@ const fileInput = ref(null)
 const filter = ref({ type: '', category: '', month: '' })
 const form = ref({ type: 'expense', amount: null, category: '', date: today(), note: '' })
 
-const currentCats = computed(() => {
+const formCats = ref([])
+const filterCats = ref([])
+
+function refreshFormCats() {
   const t = form.value.type
-  const c = cats.value
-  return (c && c[t]) ? c[t] : []
-})
+  formCats.value = t === 'expense' ? expenseCats.value.slice() : incomeCats.value.slice()
+}
 
-const allCatNames = computed(() => {
-  const c = cats.value
-  const e = (c && c.expense) ? c.expense : []
-  const i = (c && c.income) ? c.income : []
-  return [...e, ...i]
-})
+function refreshFilterCats() {
+  filterCats.value = expenseCats.value.concat(incomeCats.value)
+}
 
-const filteredRecords = computed(() => {
+function onTypeChange() {
+  form.value.category = ''
+  refreshFormCats()
+}
+
+function getFilteredRecords() {
   const list = Array.isArray(allRecords.value) ? allRecords.value : []
   return list.filter(r => {
     if (filter.value.type && r.type !== filter.value.type) return false
@@ -154,25 +159,39 @@ const filteredRecords = computed(() => {
     if (filter.value.month && r.date && r.date.slice(0, 7) !== filter.value.month) return false
     return true
   }).sort((a, b) => (b.id || 0) - (a.id || 0))
-})
+}
 
-const incomeTotal = computed(() =>
-  filteredRecords.value.filter(r => r.type === 'income').reduce((s, r) => s + (r.amount || 0), 0)
-)
-const expenseTotal = computed(() =>
-  filteredRecords.value.filter(r => r.type === 'expense').reduce((s, r) => s + (r.amount || 0), 0)
-)
-const balance = computed(() => incomeTotal.value - expenseTotal.value)
+const filteredRecords = ref([])
+
+function refreshFilteredRecords() {
+  filteredRecords.value = getFilteredRecords()
+}
+
+const incomeTotal = ref(0)
+const expenseTotal = ref(0)
+const balance = ref(0)
+
+function refreshTotals() {
+  const fr = getFilteredRecords()
+  incomeTotal.value = fr.filter(r => r.type === 'income').reduce((s, r) => s + (r.amount || 0), 0)
+  expenseTotal.value = fr.filter(r => r.type === 'expense').reduce((s, r) => s + (r.amount || 0), 0)
+  balance.value = incomeTotal.value - expenseTotal.value
+}
 
 async function fetchData() {
   loading.value = true
   try {
     const [recRes, catRes] = await Promise.all([getRecords(), getCategories()])
     allRecords.value = Array.isArray(recRes.data) ? recRes.data : []
-    if (catRes.data && catRes.data.expense && catRes.data.income) {
-      cats.value = catRes.data
+    if (catRes.data) {
+      expenseCats.value = Array.isArray(catRes.data.expense) ? catRes.data.expense.slice() : []
+      incomeCats.value = Array.isArray(catRes.data.income) ? catRes.data.income.slice() : []
     }
     if (!filter.value.month) filter.value.month = currentMonth()
+    refreshFormCats()
+    refreshFilterCats()
+    refreshFilteredRecords()
+    refreshTotals()
   } catch (e) {
     console.error('fetchData error:', e)
   }
@@ -184,6 +203,7 @@ function openAddForm() {
   editingId.value = null
   showForm.value = true
   showExportMenu.value = false
+  refreshFormCats()
 }
 
 function cancelForm() {
@@ -193,6 +213,8 @@ function cancelForm() {
 
 function resetFilters() {
   filter.value = { type: '', category: '', month: currentMonth() }
+  refreshFilteredRecords()
+  refreshTotals()
 }
 
 function toggleExport() {
@@ -237,6 +259,7 @@ function editRecord(r) {
   editingId.value = r.id
   showForm.value = true
   showExportMenu.value = false
+  refreshFormCats()
 }
 
 async function removeRecord(r) {
