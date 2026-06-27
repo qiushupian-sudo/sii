@@ -36,6 +36,19 @@ const defaultCategories = {
   income: ['工资', '兼职', '投资', '理财', '红包', '退款', '其他']
 }
 
+function normalizeCategories(data) {
+  return {
+    expense: Array.isArray(data?.expense) && data.expense.length ? data.expense : defaultCategories.expense.slice(),
+    income: Array.isArray(data?.income) && data.income.length ? data.income : defaultCategories.income.slice()
+  }
+}
+
+function readCategories() {
+  const data = normalizeCategories(readJSON(CAT_FILE, defaultCategories))
+  writeJSON(CAT_FILE, data)
+  return data
+}
+
 // --- Records ---
 app.get('/api/records', (req, res) => {
   res.json(readJSON(DATA_FILE, []))
@@ -110,16 +123,16 @@ app.delete('/api/records/:id', (req, res) => {
 
 // --- Categories ---
 app.get('/api/categories', (req, res) => {
-  res.json(readJSON(CAT_FILE, defaultCategories))
+  res.json(readCategories())
 })
 
 app.put('/api/categories', (req, res) => {
-  const data = req.body
-  if (!data || !Array.isArray(data.expense) || !Array.isArray(data.income)) {
+  const data = normalizeCategories(req.body)
+  if (!Array.isArray(req.body?.expense) || !Array.isArray(req.body?.income)) {
     return res.status(400).json({ error: '数据格式错误' })
   }
   writeJSON(CAT_FILE, data)
-  res.json({ ok: true })
+  res.json(data)
 })
 
 app.post('/api/categories/reset', (req, res) => {

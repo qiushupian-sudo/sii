@@ -102,7 +102,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onActivated, onMounted } from 'vue'
 import {
   getRecords, createRecord, updateRecord, deleteRecord,
   getCategories, exportJSON, exportCSV, importRecords
@@ -143,7 +143,7 @@ function refreshFormCats() {
 }
 
 function refreshFilterCats() {
-  filterCats.value = expenseCats.value.concat(incomeCats.value)
+  filterCats.value = Array.from(new Set(expenseCats.value.concat(incomeCats.value)))
 }
 
 function onTypeChange() {
@@ -198,7 +198,21 @@ async function fetchData() {
   loading.value = false
 }
 
-function openAddForm() {
+async function fetchCategories() {
+  try {
+    const res = await getCategories()
+    const d = res.data
+    expenseCats.value = Array.isArray(d?.expense) ? d.expense.slice() : []
+    incomeCats.value = Array.isArray(d?.income) ? d.income.slice() : []
+    refreshFormCats()
+    refreshFilterCats()
+  } catch (e) {
+    console.error('fetch categories error:', e)
+  }
+}
+
+async function openAddForm() {
+  await fetchCategories()
   form.value = { type: 'expense', amount: null, category: '', date: today(), note: '' }
   editingId.value = null
   showForm.value = true
@@ -315,6 +329,7 @@ async function onFileImport(e) {
 }
 
 onMounted(fetchData)
+onActivated(fetchData)
 </script>
 
 <style scoped>

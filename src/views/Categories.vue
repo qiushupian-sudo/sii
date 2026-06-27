@@ -48,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onActivated, onMounted } from 'vue'
 import { getCategories, updateCategories, resetCategories } from '../api'
 
 const expenseArr = ref([])
@@ -57,15 +57,16 @@ const newExpense = ref('')
 const newIncome = ref('')
 const loading = ref(true)
 
+function applyCategories(data) {
+  expenseArr.value = Array.isArray(data?.expense) ? data.expense.slice() : []
+  incomeArr.value = Array.isArray(data?.income) ? data.income.slice() : []
+}
+
 async function loadData() {
   loading.value = true
   try {
     const res = await getCategories()
-    const d = res.data
-    if (d && Array.isArray(d.expense) && Array.isArray(d.income)) {
-      expenseArr.value = d.expense.slice()
-      incomeArr.value = d.income.slice()
-    }
+    applyCategories(res.data)
   } catch (e) {
     console.error('load categories error:', e)
   }
@@ -78,15 +79,11 @@ async function saveAndReload() {
       expense: expenseArr.value.slice(),
       income: incomeArr.value.slice()
     }
-    await updateCategories(payload)
-    const res = await getCategories()
-    const d = res.data
-    if (d && Array.isArray(d.expense) && Array.isArray(d.income)) {
-      expenseArr.value = d.expense.slice()
-      incomeArr.value = d.income.slice()
-    }
+    const res = await updateCategories(payload)
+    applyCategories(res.data)
   } catch (e) {
     console.error('save categories error:', e)
+    await loadData()
   }
 }
 
@@ -119,17 +116,14 @@ async function restoreDefaults() {
   if (!confirm('确定恢复默认分类？')) return
   try {
     const res = await resetCategories()
-    const d = res.data
-    if (d && Array.isArray(d.expense) && Array.isArray(d.income)) {
-      expenseArr.value = d.expense.slice()
-      incomeArr.value = d.income.slice()
-    }
+    applyCategories(res.data)
   } catch (e) {
     console.error('reset categories error:', e)
   }
 }
 
 onMounted(loadData)
+onActivated(loadData)
 </script>
 
 <style scoped>
